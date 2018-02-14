@@ -48,14 +48,13 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 
 import java.io.File;
-import java.io.FileNotFoundException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.ehcache.clustered.client.config.builders.ClusteredResourcePoolBuilder.clusteredDedicated;
 import static org.ehcache.clustered.client.config.builders.ClusteredResourcePoolBuilder.clusteredShared;
@@ -88,7 +87,7 @@ public abstract class AbstractClusteringManagementTest extends ClusteredTests {
   protected static Connection managementConnection;
 
   @ClassRule
-  public static Cluster CLUSTER = newCluster().in(new File("build/cluster"))
+  public static Cluster CLUSTER = newCluster(2).in(new File("build/cluster"))
                                               .withServiceFragment(RESOURCE_CONFIG).build();
 
   @BeforeClass
@@ -143,8 +142,7 @@ public abstract class AbstractClusteringManagementTest extends ClusteredTests {
     assertThat(cacheManager.getStatus(), equalTo(Status.AVAILABLE));
 
     // test_notifs_sent_at_CM_init
-    waitForAllNotifications(
-      "CLIENT_CONNECTED",
+    String[] notificationsTypes = {"CLIENT_CONNECTED",
       "CLIENT_REGISTRY_AVAILABLE",
       "CLIENT_TAGS_UPDATED",
       "EHCACHE_RESOURCE_POOLS_CONFIGURED",
@@ -153,7 +151,10 @@ public abstract class AbstractClusteringManagementTest extends ClusteredTests {
       "SERVER_ENTITY_CREATED", "SERVER_ENTITY_CREATED", "SERVER_ENTITY_CREATED", "SERVER_ENTITY_CREATED", "SERVER_ENTITY_CREATED", "SERVER_ENTITY_CREATED",
       "SERVER_ENTITY_DESTROYED",
       "SERVER_ENTITY_FETCHED", "SERVER_ENTITY_FETCHED", "SERVER_ENTITY_FETCHED", "SERVER_ENTITY_FETCHED", "SERVER_ENTITY_FETCHED", "SERVER_ENTITY_FETCHED", "SERVER_ENTITY_FETCHED", "SERVER_ENTITY_FETCHED",
-      "SERVER_ENTITY_UNFETCHED"
+      "SERVER_ENTITY_UNFETCHED"};
+    waitForAllNotifications(
+      // almost twice the notifications are expected because we have 2 servers
+      Stream.concat(Arrays.stream(notificationsTypes), Arrays.stream(notificationsTypes).filter(s -> !s.startsWith("CLIENT") && !s.contains("FETCHED"))).toArray(String[]::new)
     );
 
     do {
@@ -267,7 +268,7 @@ public abstract class AbstractClusteringManagementTest extends ClusteredTests {
     nmsService.startStatisticCollector(context, 1, TimeUnit.SECONDS).waitForReturn();
   }
 
-  protected static void waitForAllNotifications(String... notificationTypes) throws InterruptedException, TimeoutException {
+  protected static void waitForAllNotifications(String... notificationTypes) throws InterruptedException {
     List<String> waitingFor = new ArrayList<>(Arrays.asList(notificationTypes));
     List<ContextualNotification> missingOnes = new ArrayList<>();
 

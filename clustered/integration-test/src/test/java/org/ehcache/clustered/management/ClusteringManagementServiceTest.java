@@ -275,7 +275,9 @@ public class ClusteringManagementServiceTest extends AbstractClusteringManagemen
     TreeSet<String> cNames = contextContainer.getSubContexts().stream().map(ContextContainer::getValue).collect(Collectors.toCollection(TreeSet::new));
     assertThat(cNames).isEqualTo(new TreeSet<>(Arrays.asList("cache-2", "dedicated-cache-1", "shared-cache-2", "shared-cache-3")));
 
-    waitForAllNotifications("SERVER_ENTITY_CREATED", "ENTITY_REGISTRY_AVAILABLE", "EHCACHE_SERVER_STORE_CREATED", "SERVER_ENTITY_FETCHED", "CACHE_ADDED");
+    waitForAllNotifications("SERVER_ENTITY_CREATED", "ENTITY_REGISTRY_AVAILABLE", "EHCACHE_SERVER_STORE_CREATED", "SERVER_ENTITY_FETCHED", "CACHE_ADDED",
+    //and passive server notifications
+      "SERVER_ENTITY_CREATED", "ENTITY_REGISTRY_AVAILABLE", "EHCACHE_SERVER_STORE_CREATED");
   }
 
   @Test
@@ -391,6 +393,29 @@ public class ClusteringManagementServiceTest extends AbstractClusteringManagemen
       .flatMap(statistics -> statistics.getStatistics().keySet().stream())
       .collect(Collectors.toSet());
     assertThat(offHeapResourceDescriptors).isEqualTo(OFFHEAP_RES_DESCRIPTORS.stream().map(StatisticDescriptor::getName).collect(Collectors.toSet()));
+  }
+
+
+  @Test
+  public void test_H_life_goes_on_after_failover() throws Exception {
+
+    // reset values before re running tests
+    cacheManager.getCache("dedicated-cache-1", String.class, String.class).clear();
+    cacheManager.removeCache("dedicated-cache-1");
+    cacheManager.createCache("dedicated-cache-1", newCacheConfigurationBuilder(
+      String.class, String.class,
+      newResourcePoolsBuilder()
+        .heap(10, EntryUnit.ENTRIES)
+        .offheap(1, MemoryUnit.MB)
+        .with(clusteredDedicated("primary-server-resource", 4, MemoryUnit.MB)))
+      .build());
+
+    // fail over triggered
+    CLUSTER.getClusterControl().terminateActive();
+    CLUSTER.getClusterControl().waitForActive();
+
+    test_G_stats_collection();
+    test_D_server_capabilities_exposed();
   }
 
 }
